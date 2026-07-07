@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 from datetime import date
 from io import BytesIO
 import dados as d
-import painel_ia   # ← camada de IA (Integrante 4)
+import painel_ia   # ← camada de IA (Integrante 4xxx)
 
 # ── Configuração da página ───────────────────────────────────────────────────
 st.set_page_config(
