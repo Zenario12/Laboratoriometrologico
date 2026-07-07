@@ -6,7 +6,8 @@ from plotly.subplots import make_subplots
 from datetime import date
 from io import BytesIO
 import dados as d
-
+import painel_ia   # ← camada de IA (Integrante 4)
+ 
 # ── Configuração da página ───────────────────────────────────────────────────
 st.set_page_config(
     page_title="Dashboard Metrológica — CamaBier S.A.",
@@ -14,19 +15,19 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
+ 
 # ── Paleta de cores ──────────────────────────────────────────────────────────
 COR_VERDE   = "#00B050"
 COR_AMARELO = "#FF9900"
 COR_VERMELHO= "#C00000"
 COR_AZUL    = "#1F4E79"
 COR_CINZA   = "#6B6B6B"
-
+ 
 def cor_semaforo(val):
     if val == "VERDE":   return COR_VERDE
     if val == "AMARELO": return COR_AMARELO
     return COR_VERMELHO
-
+ 
 # ── CSS customizado ──────────────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -46,44 +47,44 @@ st.markdown("""
 div[data-testid="stTabs"] button { font-size:0.82rem; }
 </style>
 """, unsafe_allow_html=True)
-
+ 
 # ── Sidebar — Filtros (Req. 5) ───────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 🍺 CamaBier S.A.")
     st.markdown("**Dashboard Metrológica — ENG207**")
     st.markdown("---")
     st.markdown("### Filtros")
-
+ 
     etapas_disp = {"Todas": None, "1 — Brassagem": 1, "2 — Envase": 2, "3 — Inspeção": 3}
     etapa_sel = st.selectbox("Etapa do processo", list(etapas_disp.keys()))
     etapa_val = etapas_disp[etapa_sel]
-
+ 
     inst_disp = sorted(d.INSTRUMENTOS[d.INSTRUMENTOS["Etapa"] != 0]["ID"].tolist())
     inst_sel = st.multiselect("Instrumento(s)", inst_disp, default=inst_disp)
-
+ 
     cal_sel = st.selectbox("Calibração", [1, 2, 3, 4, 5], index=4,
                            format_func=lambda x: f"Calibração {x}")
-
+ 
     st.markdown("---")
     st.markdown("### Referência de datas")
     st.markdown(f"**Hoje:** {d.TODAY.strftime('%d/%m/%Y')}")
     st.markdown("**Dataset:** Cal.5 — mar/2026")
     st.markdown("---")
     st.caption("ENG207 · Metrologia Industrial · UFBA · 2026.1")
-
+ 
 # ── Filtragem dos dados ──────────────────────────────────────────────────────
 df_inst = d.INSTRUMENTOS[d.INSTRUMENTOS["Etapa"] != 0].copy()
 if etapa_val:
     df_inst = df_inst[df_inst["Etapa"] == etapa_val]
 df_inst = df_inst[df_inst["ID"].isin(inst_sel)]
-
+ 
 df_cap = d.CAPACIDADE[d.CAPACIDADE["ID"].isin(df_inst["ID"])]
 df_der = d.DERIVA[d.DERIVA["ID"].isin(df_inst["ID"])]
 df_carta = d.CARTAS[d.CARTAS["ID"].isin(df_inst["ID"])]
 df_val = d.VALIDADE[d.VALIDADE["ID"].isin(df_inst["ID"].tolist() + ["PAD-MASS-01"])]
 df_inc = d.INCERTEZA[d.INCERTEZA["ID"].isin(df_inst["ID"])]
 df_msa = d.MSA[d.MSA["ID"].isin(df_inst["ID"])]
-
+ 
 # ── Cabeçalho ────────────────────────────────────────────────────────────────
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
@@ -198,7 +199,7 @@ with col_h2:
             st.error("Instale fpdf2: pip install fpdf2")
             
 st.markdown("---")
-
+ 
 # ── KPIs ─────────────────────────────────────────────────────────────────────
 n_inst = len(df_inst)
 der5 = d.DERIVA[d.DERIVA["Cal"] == cal_sel]
@@ -206,7 +207,7 @@ n_verde   = len(der5[der5["Semaforo"] == "VERDE"])
 n_verm    = len(der5[der5["Semaforo"] == "VERMELHO"])
 n_vence   = len(d.VALIDADE[d.VALIDADE["dias_restantes"].between(0, 90)])
 n_vencido = len(d.VALIDADE[d.VALIDADE["dias_restantes"] < 0])
-
+ 
 k1, k2, k3, k4, k5 = st.columns(5)
 with k1:
     st.markdown(f'<div class="metric-card"><h4>Instrumentos</h4><p class="val" style="color:{COR_AZUL}">{n_inst}</p><p class="sub">monitorados</p></div>', unsafe_allow_html=True)
@@ -219,25 +220,26 @@ with k4:
 with k5:
     cor_v = COR_VERMELHO if n_vencido > 0 else COR_VERDE
     st.markdown(f'<div class="metric-card"><h4>Vencidos</h4><p class="val" style="color:{cor_v}">{n_vencido}</p><p class="sub">sem calibração válida</p></div>', unsafe_allow_html=True)
-
+ 
 st.markdown("---")
-
+ 
 # ── Abas ─────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📈 Cartas de controle",
     "🚦 Semáforo Cp/Cpk",
     "📅 Status de calibração",
     "📐 Incerteza expandida",
     "🔬 Repetibilidade MSA",
+    "🤖 Assistente IA",
 ])
-
+ 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 1 — Cartas de Controle X̄-R (Req. 1)
 # ════════════════════════════════════════════════════════════════════════════
 with tab1:
     st.markdown("#### Carta de controle X̄ — erro médio por calibração")
     st.caption("Limites calculados dos próprios dados. Regras Western Electric aplicadas — ponto vermelho = violação.")
-
+ 
     ids_carta = df_carta["ID"].unique().tolist() if len(df_carta) > 0 else []
     if not ids_carta:
         st.info("Nenhum instrumento selecionado com dados de carta de controle.")
@@ -245,13 +247,13 @@ with tab1:
         inst_carta = st.selectbox("Instrumento", ids_carta, key="carta_inst")
         dc = df_carta[df_carta["ID"] == inst_carta].sort_values("Cal")
         info_inst = d.INSTRUMENTOS[d.INSTRUMENTOS["ID"] == inst_carta].iloc[0]
-
+ 
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                             subplot_titles=("Carta X̄ — erro médio", "Carta R — amplitude"),
                             vertical_spacing=0.12)
-
+ 
         cals = dc["Cal"].tolist()
-
+ 
         # Cores dos pontos — WE Regra 1: fora de LSC ou LIC
         cores_x = []
         for _, row in dc.iterrows():
@@ -259,11 +261,11 @@ with tab1:
                 cores_x.append(COR_VERMELHO)
             else:
                 cores_x.append(COR_AZUL)
-
+ 
         fig.add_trace(go.Scatter(x=cals, y=dc["xbar"], mode="lines+markers",
             marker=dict(color=cores_x, size=9, line=dict(width=1.5, color="white")),
             line=dict(color=COR_AZUL, width=1.5), name="X̄"), row=1, col=1)
-
+ 
         for col_nome, cor, dash, nome in [
             ("LSC", COR_VERMELHO, "dash", "LSC"),
             ("LC",  COR_CINZA,   "dot",  "LC"),
@@ -273,7 +275,7 @@ with tab1:
             fig.add_hline(y=val, line_color=cor, line_dash=dash, line_width=1.2,
                           annotation_text=f"{nome}={val:.4f}", annotation_position="right",
                           annotation_font_size=10, row=1, col=1)
-
+ 
         # Critério ±T
         t = info_inst["Criterio_T"]
         fig.add_hline(y=t, line_color="#9CA3AF", line_dash="longdash", line_width=0.8,
@@ -282,7 +284,7 @@ with tab1:
         fig.add_hline(y=-t, line_color="#9CA3AF", line_dash="longdash", line_width=0.8,
                       annotation_text=f"−T={t}", annotation_position="right",
                       annotation_font_size=9, row=1, col=1)
-
+ 
         # Carta R
         cores_r = []
         for _, row in dc.iterrows():
@@ -290,7 +292,7 @@ with tab1:
                 cores_r.append(COR_VERMELHO)
             else:
                 cores_r.append(COR_CINZA)
-
+ 
         fig.add_trace(go.Bar(x=cals, y=dc["R"], marker_color=cores_r,
                              name="R", opacity=0.75), row=2, col=1)
         fig.add_hline(y=dc["LSC_R"].iloc[0], line_color=COR_VERMELHO, line_dash="dash",
@@ -299,7 +301,7 @@ with tab1:
         fig.add_hline(y=dc["Rbar"].iloc[0], line_color=COR_CINZA, line_dash="dot",
                       line_width=1, annotation_text="R̄",
                       annotation_font_size=9, row=2, col=1)
-
+ 
         fig.update_layout(height=450, showlegend=False,
                           plot_bgcolor="white", paper_bgcolor="white",
                           margin=dict(l=10, r=120, t=40, b=10),
@@ -307,33 +309,33 @@ with tab1:
                                       tickvals=cals, ticktext=[f"Cal.{c}" for c in cals]))
         fig.update_yaxes(gridcolor="#F1F5F9", gridwidth=0.5)
         st.plotly_chart(fig, use_container_width=True)
-
+ 
         # Derivação monotônica TC-201
         if inst_carta == "TC-201":
             st.markdown('<div class="alerta-danger">⚠ <strong>WE Regra 1 — Cal.5 FORA DE CONTROLE:</strong> X̄ = +0,309 °C acima do LSC. Deriva monotônica confirmada (R²=0,994). Causa: envelhecimento da junção do termopar — viés crescente, repetibilidade preservada. <em>Montgomery SQC cap.5; GUM §4.2 Tipo A</em></div>', unsafe_allow_html=True)
         if inst_carta == "TRQ-801":
             st.markdown('<div class="alerta-warn">⚠ <strong>Tendência leve monotônica:</strong> Erro médio de −0,0035 → +0,0040 N·m. Não crítica, mas justifica monitoramento preventivo. <em>AIAG MSA 4ª ed.</em></div>', unsafe_allow_html=True)
-
+ 
         st.markdown(f'<p class="norma-ref">📚 Norma: {info_inst["Norma"]} · Montgomery SQC cap.5 (Western Electric) · AIAG MSA 4ª ed.</p>', unsafe_allow_html=True)
-
-
+ 
+ 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 2 — Semáforo Cp/Cpk/Pp/Ppk (Req. 2)
 # ════════════════════════════════════════════════════════════════════════════
 with tab2:
     st.markdown("#### Índices de capacidade — Cal. " + str(cal_sel))
     st.caption("Verde ≥ 1,33 · Amarelo 1,00–1,33 · Vermelho < 1,00 — AIAG MSA 4ª ed.")
-
+ 
     # Cpk por calibração (deriva)
     der_cal = d.DERIVA[d.DERIVA["Cal"] == cal_sel].copy()
     der_cal = der_cal[der_cal["ID"].isin(df_inst["ID"])]
     der_cal = der_cal.merge(d.CAPACIDADE[["ID","Cp","Pp","Ppk"]], on="ID", how="left")
-
+ 
     def badge(sem):
         if sem == "VERDE":    return "🟢"
         if sem == "AMARELO":  return "🟡"
         return "🔴"
-
+ 
     # Gráfico de barras Cpk
     cores_bar = [cor_semaforo(s) for s in der_cal["Semaforo"]]
     fig2 = go.Figure()
@@ -355,7 +357,7 @@ with tab2:
                        yaxis=dict(title="Cpk", gridcolor="#F1F5F9"),
                        xaxis=dict(title=""))
     st.plotly_chart(fig2, use_container_width=True)
-
+ 
     # Tabela completa
     st.markdown("##### Tabela Cp / Cpk / Pp / Ppk")
     rows_tbl = []
@@ -372,29 +374,29 @@ with tab2:
             "Norma": inst_info["Norma"],
         })
     st.dataframe(pd.DataFrame(rows_tbl), use_container_width=True, hide_index=True)
-
+ 
     # Alerta BAL-101
     st.markdown('<div class="alerta-warn">⚠ <strong>BAL-101:</strong> Cpk = 4,89 (VERDE estatístico), mas calibração metrologicamente <strong>inválida</strong> — padrão PAD-MASS-01 sem rastreabilidade RBC. Capacidade boa ≠ validade metrológica. <em>ISO/IEC 17025:2017 §6.5</em></div>', unsafe_allow_html=True)
     st.markdown('<p class="norma-ref">📚 Regras: AIAG MSA 4ª ed. · Montgomery SQC · ISO 5725</p>', unsafe_allow_html=True)
-
-
+ 
+ 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 3 — Status de calibração (Req. 3)
 # ════════════════════════════════════════════════════════════════════════════
 with tab3:
     st.markdown("#### Status de validade — próximas calibrações")
     st.caption(f"Referência: {d.TODAY.strftime('%d/%m/%Y')} · Prazos fundamentados em norma")
-
+ 
     st.markdown('<div class="alerta-danger">🚫 <strong>ANOMALIA 2 — BAL-101 / PAD-MASS-01:</strong> Rastreabilidade metrológica inválida. O padrão PAD-MASS-01 é de fornecedor não acreditado (rbc_acreditado = False). A calibração da BAL-101 é metrologicamente inválida mesmo com Cpk = 4,89. <em>ISO/IEC 17025:2017 §6.5</em></div>', unsafe_allow_html=True)
     st.markdown('<div class="alerta-warn">📋 <strong>ANOMALIA 4 — Inconsistência documental:</strong> Certificados PDF declaram calibração em 15/04/2026; histórico CSV mostra calibrações reais em mar/2026. Datas divergentes. <em>ISO 17025:2017 §7.5 e §8.4 — controle de registros</em></div>', unsafe_allow_html=True)
-
+ 
     df_v = d.VALIDADE.copy()
-
+ 
     def cor_status(s):
         if s in ("RECALIBRAR URGENTE", "VENCIDO", "SEM RASTREABILIDADE"): return COR_VERMELHO
         if s == "VENCE EM BREVE": return COR_AMARELO
         return COR_VERDE
-
+ 
     # Gráfico de barras — dias restantes
     df_v_plot = df_v[df_v["ID"] != "PAD-MASS-01"].copy()
     cores_dias = [cor_status(s) for s in df_v_plot["status"]]
@@ -415,13 +417,13 @@ with tab3:
                        xaxis=dict(title="Dias até próxima calibração", gridcolor="#F1F5F9"),
                        yaxis=dict(title=""))
     st.plotly_chart(fig3, use_container_width=True)
-
+ 
     # Tabela detalhada
     tbl_val = df_v[["ID","prazo","ultima_cal","proxima_cal","dias_restantes","status","norma"]].copy()
     tbl_val.columns = ["Instrumento","Prazo (m)","Última cal.","Próxima cal.","Dias rest.","Status","Fundamento normativo"]
     tbl_val["Última cal."]  = tbl_val["Última cal."].apply(lambda x: x.strftime("%d/%m/%Y"))
     tbl_val["Próxima cal."] = tbl_val["Próxima cal."].apply(lambda x: x.strftime("%d/%m/%Y"))
-
+ 
     def highlight_status(row):
         s = row["Status"]
         if s in ("RECALIBRAR URGENTE","VENCIDO","SEM RASTREABILIDADE"):
@@ -429,49 +431,43 @@ with tab3:
         if s == "VENCE EM BREVE":
             return ["background-color: #FFFBEB"] * len(row)
         return [""] * len(row)
-
+ 
     st.dataframe(tbl_val.style.apply(highlight_status, axis=1),
                  use_container_width=True, hide_index=True)
     st.markdown('<p class="norma-ref">📚 Prazos: ISO 17025 §6.4.7 · ILAC-G24:2022 · Portaria INMETRO 248/2008 · OIML D10 · AIAG MSA 4ª ed.</p>', unsafe_allow_html=True)
-
-
+ 
+ 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 4 — Incerteza Expandida U (k=2) (Req. 4)
 # ════════════════════════════════════════════════════════════════════════════
-# --- CÓDIGO CORRIGIDO ---
-
 with tab4:
     st.markdown("#### Incerteza expandida U (k = 2) — balanço por instrumento")
     st.caption("u_A = s/√10 (Tipo A) · u_pad = U_pad/2 (Tipo B normal) · u_res = (res/2)/√3 (Tipo B retangular) · u_c = √(Σu²) · U = 2·u_c — GUM/JCGM 100:2008")
-
-    # Mantenha esta linha exatamente como está no seu código (imagem_00347d.png, linha 445)
-    lista_instrumentos = df_inc["ID"].tolist()
-    inst_inc = st.selectbox("Instrumento", lista_instrumentos, key="inc_inst")
-
-    # === NOVO BLOCO DE PROTEÇÃO ===
-    # Verifica se a lista não está vazia e se um instrumento foi selecionado
-    if lista_instrumentos and inst_inc:
-        # Só agora tentamos acessar o índice [0], pois sabemos que há dados
-        # (imagem_00347d.png, linha 446 e 447)
-        row_i = df_inc[df_inc["ID"] == inst_inc].iloc[0]
-        info_i = d.INSTRUMENTOS[d.INSTRUMENTOS["ID"] == inst_inc].iloc[0]
-
-        import math
-        
-        # Mantenha todo o seu código de cálculo exatamente como está (linhas 450-454), 
-        # mas certifique-se de que ele esteja INDENTADO (recuado) para dentro do 'if'.
-        uA = row_i["s_cal5"] / math.sqrt(10)
-        uB1 = row_i["U_pad"] / 2
-        uB2 = (row_i["Resolucao"] / 2) / math.sqrt(3)
-        uc = math.sqrt(uA**2 + uB1**2 + uB2**2)
-        U = 2 * uc
-        
-        # ... (todo o restante do seu código de plotagem ci1, ci2... fig4...)
-
-    else:
-        # Se a lista estiver vazia (campo bloqueado), mostra uma mensagem amigável
-        st.warning("Verifique se há dados de incerteza disponíveis ou se os filtros na barra lateral estão limpando os dados.")
-
+ 
+    inst_inc = st.selectbox("Instrumento", df_inc["ID"].tolist(), key="inc_inst")
+    row_i = df_inc[df_inc["ID"] == inst_inc].iloc[0]
+    info_i = d.INSTRUMENTOS[d.INSTRUMENTOS["ID"] == inst_inc].iloc[0]
+ 
+    import math
+    uA  = row_i["s_cal5"] / math.sqrt(10)
+    uB1 = row_i["U_pad"] / 2
+    uB2 = (row_i["Resolucao"] / 2) / math.sqrt(3)
+    uc  = math.sqrt(uA**2 + uB1**2 + uB2**2)
+    U   = 2 * uc
+ 
+    ci1, ci2, ci3, ci4 = st.columns(4)
+    with ci1:
+        st.markdown(f'<div class="metric-card"><h4>u_A (Tipo A)</h4><p class="val" style="color:{COR_AZUL};font-size:1.4rem">{uA:.5f}</p><p class="sub">{row_i["Unid"]}</p></div>', unsafe_allow_html=True)
+    with ci2:
+        st.markdown(f'<div class="metric-card"><h4>u_B padrão (Tipo B)</h4><p class="val" style="color:{COR_AZUL};font-size:1.4rem">{uB1:.5f}</p><p class="sub">{row_i["Unid"]}</p></div>', unsafe_allow_html=True)
+    with ci3:
+        st.markdown(f'<div class="metric-card"><h4>u_c combinada</h4><p class="val" style="color:{COR_AZUL};font-size:1.4rem">{uc:.5f}</p><p class="sub">{row_i["Unid"]}</p></div>', unsafe_allow_html=True)
+    with ci4:
+        cor_u = COR_AZUL
+        st.markdown(f'<div class="metric-card"><h4>U expandida (k=2)</h4><p class="val" style="color:{cor_u};font-size:1.4rem">{U:.5f}</p><p class="sub">{row_i["Unid"]}</p></div>', unsafe_allow_html=True)
+ 
+    st.markdown("")
+ 
     # Tabela de balanço
     st.markdown("##### Tabela de balanço de incerteza")
     bal = pd.DataFrame([
@@ -492,7 +488,7 @@ with tab4:
          "u_i": f"{U:.6f}", "u_i²": "—"},
     ])
     st.dataframe(bal, use_container_width=True, hide_index=True)
-
+ 
     # Conformidade
     erro_abs = abs(row_i["Erro_med"])
     banda = erro_abs + U
@@ -504,15 +500,15 @@ with tab4:
         st.metric("|erro| + U", f"{banda:.5f} {row_i['Unid']}")
     with col_c3:
         st.metric("Critério ±T", f"{row_i['T']:.5f} {row_i['Unid']}")
-
+ 
     if conforme:
         st.success(f"✅ CONFORME — |erro| + U = {banda:.5f} ≤ T = {row_i['T']:.5f} {row_i['Unid']} · ILAC-G8:2019")
     else:
         st.error(f"❌ NÃO CONFORME — |erro| + U = {banda:.5f} > T = {row_i['T']:.5f} {row_i['Unid']}")
-
+ 
     if inst_inc == "TC-201":
         st.markdown('<div class="alerta-danger">⚠ <strong>TC-201 — Projeção de deriva:</strong> Mesmo CONFORME no critério estático, a tendência monotônica projeta ruptura de ±T na Cal.6. u_deriva adicional = 0,022 °C. Recalibração urgente indicada. <em>GUM/JCGM 100:2008 §4.3; ISO 17025 §6.4.7</em></div>', unsafe_allow_html=True)
-
+ 
     # Gráfico todos os instrumentos
     st.markdown("##### Comparação — U (k=2) vs critério ±T")
     fig4 = go.Figure()
@@ -528,15 +524,15 @@ with tab4:
                        legend=dict(orientation="h", yanchor="bottom", y=1.02))
     st.plotly_chart(fig4, use_container_width=True)
     st.markdown('<p class="norma-ref">📚 GUM/JCGM 100:2008 §4.2 (Tipo A) · §4.3.3 (Tipo B normal) · §4.3.7 (Tipo B retangular) · §5.1.2 (u_c) · §G.4 (Welch-Satterthwaite) · §6.2 (k=2) · ILAC-G8:2019 (conformidade)</p>', unsafe_allow_html=True)
-
-
+ 
+ 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 5 — Repetibilidade MSA
 # ════════════════════════════════════════════════════════════════════════════
 with tab5:
     st.markdown("#### Repetibilidade — Estudo MSA (variação do equipamento)")
     st.caption("EV = σ_rep = R̄/d₂ · Razão P/T = 6·EV / 2T · Limite: P/T ≤ 10% ideal, ≤ 30% aceitável — AIAG MSA 4ª ed.")
-
+ 
     fig5 = go.Figure()
     cores_pt = [COR_VERDE if r <= 0.3 else COR_AMARELO if r <= 0.5 else COR_VERMELHO
                 for r in df_msa["PT_ratio"]]
@@ -552,7 +548,7 @@ with tab5:
                        margin=dict(l=10, r=120, t=20, b=10),
                        yaxis=dict(title="Razão P/T (%)", gridcolor="#F1F5F9"))
     st.plotly_chart(fig5, use_container_width=True)
-
+ 
     st.markdown("##### Tabela de repetibilidade")
     tbl_msa = df_msa[["ID","Unid","EV","uA","PT_ratio"]].copy()
     tbl_msa.columns = ["Instrumento","Unid.","EV = σ_rep (R̄/d₂)","u_A combinado","Razão P/T"]
@@ -560,6 +556,93 @@ with tab5:
     tbl_msa["u_A combinado"] = tbl_msa["u_A combinado"].apply(lambda x: f"{x:.5f}")
     tbl_msa["Razão P/T"] = tbl_msa["Razão P/T"].apply(lambda x: f"{x*100:.1f}%")
     st.dataframe(tbl_msa, use_container_width=True, hide_index=True)
-
+ 
     st.markdown('<div class="alerta-warn">ℹ <strong>Nota sobre P/T elevado:</strong> Valores como PHM-301 (42,4%) e DEN-401 (53,1%) não indicam instrumento ruim — a tolerância ±T é apertada. O instrumento repete bem, mas a tolerância consome boa parte da faixa. Dataset tem apenas repetibilidade (sem múltiplos operadores), portanto não é possível calcular R&R completo. <em>AIAG MSA 4ª ed. §4</em></div>', unsafe_allow_html=True)
     st.markdown('<p class="norma-ref">📚 AIAG MSA 4ª ed. · ISO 5725-2 · GUM/JCGM 100:2008 §4.2 (u_A = Tipo A)</p>', unsafe_allow_html=True)
+ 
+ 
+# ════════════════════════════════════════════════════════════════════════════
+# TAB 6 — Assistente IA (Integrante 4) — conversa e altera o painel ao vivo
+# ════════════════════════════════════════════════════════════════════════════
+def render_foco(estado):
+    """Painel de foco que reage ao comando da IA, usando os dados do dashboard."""
+    inst = estado["instrumento"]
+    info = d.INSTRUMENTOS[d.INSTRUMENTOS["ID"] == inst]
+    if info.empty:
+        st.info("Instrumento não reconhecido.")
+        return
+    info = info.iloc[0]
+    st.markdown(f'<p class="page-title">🔎 Foco: {inst} — {info["Grandeza"]}</p>',
+                unsafe_allow_html=True)
+    st.markdown(f'<p class="section-label">Visão: {estado["aba"]}'
+                + (f' · destaque: {estado["destaque"]}' if estado["destaque"] else '')
+                + '</p>', unsafe_allow_html=True)
+ 
+    aba = estado["aba"]
+    if aba == "carta":
+        dc_ = d.CARTAS[d.CARTAS["ID"] == inst].sort_values("Cal")
+        if dc_.empty:
+            st.info("Sem carta de controle para este instrumento.")
+        else:
+            cor = COR_VERMELHO if estado["destaque"] == "deriva" else COR_AZUL
+            fig = go.Figure()
+            fig.add_hline(y=dc_["LSC"].iloc[0], line_color=COR_VERMELHO, line_dash="dash")
+            fig.add_hline(y=dc_["LIC"].iloc[0], line_color=COR_VERDE, line_dash="dash")
+            fig.add_trace(go.Scatter(x=dc_["Cal"], y=dc_["xbar"], mode="lines+markers",
+                                     line=dict(color=cor, width=2.5), name="X̄"))
+            fig.update_layout(height=260, plot_bgcolor="white", paper_bgcolor="white",
+                              margin=dict(l=10, r=10, t=20, b=10),
+                              xaxis_title="Calibração", yaxis_title="Erro médio")
+            st.plotly_chart(fig, use_container_width=True)
+ 
+    elif aba == "capacidade":
+        cap = d.CAPACIDADE[d.CAPACIDADE["ID"] == inst]
+        if cap.empty:
+            st.info("Sem índices de capacidade (instrumento é padrão de referência).")
+        else:
+            cap = cap.iloc[0]
+            cols = st.columns(4)
+            for col, idx in zip(cols, ["Cp", "Cpk", "Pp", "Ppk"]):
+                v = cap[idx]
+                sem = "🟢" if v >= 1.33 else ("🟡" if v >= 1.0 else "🔴")
+                col.metric(idx, f"{v:.2f}", sem)
+ 
+    elif aba == "calibracao":
+        val = d.VALIDADE[d.VALIDADE["ID"] == inst]
+        if not val.empty:
+            val = val.iloc[0]
+            c1, c2 = st.columns(2)
+            c1.metric("Próxima calibração", val["proxima_cal"].strftime("%d/%m/%Y"))
+            c2.metric("Dias restantes", int(val["dias_restantes"]))
+            st.markdown(f'<div class="alerta-warn">Status: <strong>{val["status"]}</strong> · '
+                        f'{val["norma"]}</div>', unsafe_allow_html=True)
+ 
+    elif aba == "incerteza":
+        inc = d.INCERTEZA[d.INCERTEZA["ID"] == inst]
+        if inc.empty:
+            st.info("Sem balanço de incerteza para este instrumento.")
+        else:
+            inc = inc.iloc[0]
+            c1, c2 = st.columns(2)
+            c1.metric(f"U (k=2)", f"± {inc['U_k2']:.4f} {inc['Unid']}")
+            c2.metric("ν_eff (Welch-Satt.)", int(inc["nu_eff"]))
+            if inc["Obs"]:
+                st.caption(inc["Obs"])
+ 
+ 
+with tab6:
+    st.markdown('<p class="page-title">🤖 Assistente Metrológico com IA</p>',
+                unsafe_allow_html=True)
+    st.markdown('<p class="section-label">Converse em linguagem natural — a IA lê os dados '
+                'do dashboard, cita a norma e foca o instrumento. Ex.: "mostre a deriva do '
+                'TC-201", "capacidade do BAL-101", "incerteza do FL-501".</p>',
+                unsafe_allow_html=True)
+    st.markdown("")
+    col_chat, col_foco = st.columns([1, 1], gap="large")
+    with col_chat:
+        painel_ia.render_chat_ia()
+    with col_foco:
+        render_foco(painel_ia.estado_atual())
+    st.markdown('<p class="norma-ref">📚 Explicabilidade: toda resposta cita norma (ISO 17025 / '
+                'GUM / Portaria 248 / Dec. 6.871). Sistema com base normativa controlada · Equipe 4.</p>',
+                unsafe_allow_html=True)
